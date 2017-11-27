@@ -29,13 +29,29 @@ def convert_symbol2proto(symbol):
                 continue
         no_weight_nodes.append(node)
 
+    # build next node dict
+    next_node = dict()
+    for node in no_weight_nodes:
+        node_name = node['name']
+        for input in node['inputs']:
+            last_node_name = all_nodes[input[0]]['name']
+            if last_node_name in next_node:
+                next_node[last_node_name].append(node_name)
+            else:
+                next_node[last_node_name] = [node_name]
+
     supported_op_type = ['null', 'BatchNorm', 'Convolution', 'Activation', 'Pooling', 'elemwise_add', 'SliceChannel',
                          'FullyConnected', 'SoftmaxOutput']
     top_dict = dict()
     caffe_net = caffe.NetSpec()
     for node in no_weight_nodes:
         if node['op'] == 'null':
-            top_data = CL.Input(ntop=1)
+            input_param = dict()
+            if node['name'] == 'data':
+                input_param['shape'] = dict(dim=[1, 3, 128, 128])
+            else:
+                input_param['shape'] = dict(dim=[1])
+            top_data = CL.Input(ntop=1, input_param=input_param)
             top_dict[node['name']] = [top_data]
             setattr(caffe_net, node['name'], top_data)
         elif node['op'].endswith('_copy'):
@@ -49,10 +65,13 @@ def convert_symbol2proto(symbol):
                     break
             bottom_node_name = all_nodes[input[0]]['name']
             attr = node['attr']
+            in_place = False
+            if len(next_node[bottom_node_name]) == 1:
+                in_place = True
             bn_top = CL.BatchNorm(top_dict[bottom_node_name][input[1]], ntop=1,
                                   batch_norm_param=dict(use_global_stats=True,
                                                         moving_average_fraction=float(attr['momentum']),
-                                                        eps=float(attr['eps'])), in_place=True)
+                                                        eps=float(attr['eps'])), in_place=in_place)
             setattr(caffe_net, node['name'], bn_top)
             scale_top = CL.Scale(bn_top, ntop=1, scale_param=dict(bias_term=True), in_place=True)
             top_dict[node['name']] = [scale_top]
@@ -96,7 +115,10 @@ def convert_symbol2proto(symbol):
                     break
             bottom_node_name = all_nodes[input[0]]['name']
             attr = node['attr']
-            ac_top = CL.ReLU(top_dict[bottom_node_name][input[1]], ntop=1, in_place=True)
+            in_place = False
+            if len(next_node[bottom_node_name]) == 1:
+                in_place = True
+            ac_top = CL.ReLU(top_dict[bottom_node_name][input[1]], ntop=1, in_place=in_place)
             top_dict[node['name']] = [ac_top]
             setattr(caffe_net, node['name'], ac_top)
         elif node['op'] == 'Pooling':
@@ -115,18 +137,21 @@ def convert_symbol2proto(symbol):
                 pooling_param['pool'] = 0
             else:
                 assert False, attr['pool_type']
-            if 'kernel' in attr:
-                kernel_size = eval(attr['kernel'])
-                assert kernel_size[0] == kernel_size[1]
-                pooling_param['kernel_size'] = kernel_size[0]
-            if 'pad' in attr:
-                pad_size = eval(attr['pad'])
-                assert pad_size[0] == pad_size[1]
-                pooling_param['pad'] = pad_size[0]
-            if 'stride' in attr:
-                stride_size = eval(attr['stride'])
-                assert stride_size[0] == stride_size[1]
-                pooling_param['stride'] = stride_size[0]
+            if 'global_pool' in attr and eval(attr['global_pool']) is True:
+                pooling_param['global_pooling'] = True
+            else:
+                if 'kernel' in attr:
+                    kernel_size = eval(attr['kernel'])
+                    assert kernel_size[0] == kernel_size[1]
+                    pooling_param['kernel_size'] = kernel_size[0]
+                if 'pad' in attr:
+                    pad_size = eval(attr['pad'])
+                    assert pad_size[0] == pad_size[1]
+                    pooling_param['pad'] = pad_size[0]
+                if 'stride' in attr:
+                    stride_size = eval(attr['stride'])
+                    assert stride_size[0] == stride_size[1]
+                    pooling_param['stride'] = stride_size[0]
             pool_top = CL.Pooling(top_dict[bottom_node_name][input[1]], ntop=1, pooling_param=pooling_param)
             top_dict[node['name']] = [pool_top]
             setattr(caffe_net, node['name'], pool_top)
@@ -162,7 +187,6 @@ def convert_symbol2proto(symbol):
             slice_param = dict()
             slice_param['slice_dim'] = 1
             slice_num = 2
-            slice_outputs = [None] * slice_num
             slice_outputs = CL.Slice(top_dict[bottom_node_name][input[1]], ntop=slice_num, slice_param=slice_param)
             top_dict[node['name']] = slice_outputs
             for idx, output in enumerate(slice_outputs):

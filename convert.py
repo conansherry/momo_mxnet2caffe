@@ -15,6 +15,7 @@ from test_network.resnet import get_symbol
 from utils.save_sym_model import save_symbol_model_for_test
 from utils.get_dg_from_mxnet import get_dg_from_mxnet
 from utils.convert_symbol2proto import convert_symbol2proto
+from utils.convert_params2model import convert_params2model
 
 if __name__ == '__main__':
     # parse args
@@ -35,4 +36,8 @@ if __name__ == '__main__':
 
     symbol, arg_params, aux_params = mx.model.load_checkpoint('resnet', 0)
 
-    print convert_symbol2proto(symbol)
+    caffe_prototxt = str(convert_symbol2proto(symbol))
+    with open('./resnet.prototxt', 'w') as prototxt_file:
+        prototxt_file.write(caffe_prototxt)
+
+    convert_params2model('./resnet.prototxt', './resnet.caffemodel', symbol, arg_params, aux_params)

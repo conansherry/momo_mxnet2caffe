@@ -27,10 +27,10 @@ def save_symbol_model_for_test(prefix, epoch, symbol, shape):
     arg_params = dict()
     aux_params = dict()
     for k in symbol.list_arguments():
-        arg_params[k] = mx.random.normal(0, 0.1, shape=arg_shape_dict[k])
+        arg_params[k] = mx.random.normal(0, 1, shape=arg_shape_dict[k])
 
     for k in symbol.list_auxiliary_states():
-        aux_params[k] = mx.random.normal(0, 0.1, shape=aux_shape_dict[k])
+        aux_params[k] = mx.random.normal(0, 1, shape=aux_shape_dict[k])
 
     json_name = '%s-symbol.json' % prefix
     symbol.save(json_name)
