@@ -41,14 +41,14 @@ def convert_symbol2proto(symbol):
                 next_node[last_node_name] = [node_name]
 
     supported_op_type = ['null', 'BatchNorm', 'Convolution', 'Activation', 'Pooling', 'elemwise_add', 'SliceChannel',
-                         'FullyConnected', 'SoftmaxOutput']
+                         'FullyConnected', 'SoftmaxOutput', '_maximum']
     top_dict = dict()
     caffe_net = caffe.NetSpec()
     for node in no_weight_nodes:
         if node['op'] == 'null':
             input_param = dict()
             if node['name'] == 'data':
-                input_param['shape'] = dict(dim=[1, 3, 128, 128])
+                input_param['shape'] = dict(dim=[1, 3, 160, 160])
             else:
                 input_param['shape'] = dict(dim=[1])
             top_data = CL.Input(ntop=1, input_param=input_param)
@@ -68,10 +68,18 @@ def convert_symbol2proto(symbol):
             in_place = False
             if len(next_node[bottom_node_name]) == 1:
                 in_place = True
+            if 'momentum' in attr:
+                momentum = float(attr['momentum'])
+            else:
+                momentum = 0.9
+            if 'eps' in attr:
+                eps = float(attr['eps'])
+            else:
+                eps = 0.001
             bn_top = CL.BatchNorm(top_dict[bottom_node_name][input[1]], ntop=1,
                                   batch_norm_param=dict(use_global_stats=True,
-                                                        moving_average_fraction=float(attr['momentum']),
-                                                        eps=float(attr['eps'])), in_place=in_place)
+                                                        moving_average_fraction=momentum,
+                                                        eps=eps), in_place=in_place)
             setattr(caffe_net, node['name'], bn_top)
             scale_top = CL.Scale(bn_top, ntop=1, scale_param=dict(bias_term=True), in_place=True)
             top_dict[node['name']] = [scale_top]
@@ -93,7 +101,9 @@ def convert_symbol2proto(symbol):
             else:
                 convolution_param['kernel_size'] = 1
             if 'no_bias' in attr:
-                convolution_param['bias_term'] = False
+                convolution_param['bias_term'] = not bool(attr['no_bias'])
+            if 'num_group' in attr:
+                convolution_param['group'] = int(attr['num_group'])
             convolution_param['num_output'] = int(attr['num_filter'])
             if 'pad' in attr:
                 pad_size = eval(attr['pad'])
@@ -172,6 +182,27 @@ def convert_symbol2proto(symbol):
             bottom_node_name_b = all_nodes[input_b[0]]['name']
             eltwise_param = dict()
             eltwise_param['operation'] = 1
+            ele_add_top = CL.Eltwise(top_dict[bottom_node_name_a][input_a[1]], top_dict[bottom_node_name_b][input_b[1]],
+                                     ntop=1, eltwise_param=eltwise_param)
+            top_dict[node['name']] = [ele_add_top]
+            setattr(caffe_net, node['name'], ele_add_top)
+        elif node['op'] == '_maximum':
+            input_a = node['inputs'][0]
+            while True:
+                if all_nodes[input_a[0]]['op'] not in supported_op_type:
+                    input_a = all_nodes[input_a[0]]['inputs'][0]
+                else:
+                    break
+            input_b = node['inputs'][1]
+            while True:
+                if all_nodes[input_b[0]]['op'] not in supported_op_type:
+                    input_b = all_nodes[input_b[0]]['inputs'][0]
+                else:
+                    break
+            bottom_node_name_a = all_nodes[input_a[0]]['name']
+            bottom_node_name_b = all_nodes[input_b[0]]['name']
+            eltwise_param = dict()
+            eltwise_param['operation'] = 2
             ele_add_top = CL.Eltwise(top_dict[bottom_node_name_a][input_a[1]], top_dict[bottom_node_name_b][input_b[1]],
                                      ntop=1, eltwise_param=eltwise_param)
             top_dict[node['name']] = [ele_add_top]
