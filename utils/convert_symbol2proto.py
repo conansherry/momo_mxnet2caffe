@@ -5,6 +5,8 @@ import json
 import logging
 logging.basicConfig(level=logging.DEBUG)
 
+NO_INPLACE = False
+
 def convert_symbol2proto(symbol):
     def looks_like_weight(name):
         """Internal helper to figure out if node should be hidden with `hide_weights`.
@@ -41,7 +43,7 @@ def convert_symbol2proto(symbol):
                 next_node[last_node_name] = [node_name]
 
     supported_op_type = ['null', 'BatchNorm', 'Convolution', 'Activation', 'Pooling', 'elemwise_add', 'SliceChannel',
-                         'FullyConnected', 'SoftmaxOutput', '_maximum']
+                         'FullyConnected', 'SoftmaxOutput', '_maximum', 'add_n', 'Concat']
     top_dict = dict()
     caffe_net = caffe.NetSpec()
     for node in no_weight_nodes:
@@ -64,7 +66,7 @@ def convert_symbol2proto(symbol):
                 else:
                     break
             bottom_node_name = all_nodes[input[0]]['name']
-            attr = node['attr']
+            attr = node['attrs']
             in_place = False
             if len(next_node[bottom_node_name]) == 1:
                 in_place = True
@@ -76,12 +78,14 @@ def convert_symbol2proto(symbol):
                 eps = float(attr['eps'])
             else:
                 eps = 0.001
+            if NO_INPLACE:
+                in_place = False
             bn_top = CL.BatchNorm(top_dict[bottom_node_name][input[1]], ntop=1,
                                   batch_norm_param=dict(use_global_stats=True,
                                                         moving_average_fraction=momentum,
                                                         eps=eps), in_place=in_place)
             setattr(caffe_net, node['name'], bn_top)
-            scale_top = CL.Scale(bn_top, ntop=1, scale_param=dict(bias_term=True), in_place=True)
+            scale_top = CL.Scale(bn_top, ntop=1, scale_param=dict(bias_term=True), in_place=not NO_INPLACE)
             top_dict[node['name']] = [scale_top]
             setattr(caffe_net, node['name'] + '_scale', scale_top)
         elif node['op'] == 'Convolution':
@@ -92,7 +96,7 @@ def convert_symbol2proto(symbol):
                 else:
                     break
             bottom_node_name = all_nodes[input[0]]['name']
-            attr = node['attr']
+            attr = node['attrs']
             convolution_param = dict()
             if 'kernel' in attr:
                 kernel_size = eval(attr['kernel'])
@@ -101,7 +105,7 @@ def convert_symbol2proto(symbol):
             else:
                 convolution_param['kernel_size'] = 1
             if 'no_bias' in attr:
-                convolution_param['bias_term'] = not bool(attr['no_bias'])
+                convolution_param['bias_term'] = not eval(attr['no_bias'])
             if 'num_group' in attr:
                 convolution_param['group'] = int(attr['num_group'])
             convolution_param['num_output'] = int(attr['num_filter'])
@@ -124,11 +128,18 @@ def convert_symbol2proto(symbol):
                 else:
                     break
             bottom_node_name = all_nodes[input[0]]['name']
-            attr = node['attr']
+            attr = node['attrs']
             in_place = False
             if len(next_node[bottom_node_name]) == 1:
                 in_place = True
-            ac_top = CL.ReLU(top_dict[bottom_node_name][input[1]], ntop=1, in_place=in_place)
+            if NO_INPLACE:
+                in_place = False
+            if attr['act_type'] == 'relu':
+                ac_top = CL.ReLU(top_dict[bottom_node_name][input[1]], ntop=1, in_place=in_place)
+            elif attr['act_type'] == 'sigmoid':
+                ac_top = CL.Sigmoid(top_dict[bottom_node_name][input[1]], ntop=1, in_place=in_place)
+            elif attr['act_type'] == 'tanh':
+                ac_top = CL.TanH(top_dict[bottom_node_name][input[1]], ntop=1, in_place=in_place)
             top_dict[node['name']] = [ac_top]
             setattr(caffe_net, node['name'], ac_top)
         elif node['op'] == 'Pooling':
@@ -139,7 +150,7 @@ def convert_symbol2proto(symbol):
                 else:
                     break
             bottom_node_name = all_nodes[input[0]]['name']
-            attr = node['attr']
+            attr = node['attrs']
             pooling_param = dict()
             if attr['pool_type'] == 'avg':
                 pooling_param['pool'] = 1
@@ -165,7 +176,7 @@ def convert_symbol2proto(symbol):
             pool_top = CL.Pooling(top_dict[bottom_node_name][input[1]], ntop=1, pooling_param=pooling_param)
             top_dict[node['name']] = [pool_top]
             setattr(caffe_net, node['name'], pool_top)
-        elif node['op'] == 'elemwise_add':
+        elif node['op'] == 'elemwise_add' or node['op'] == 'add_n':
             input_a = node['inputs'][0]
             while True:
                 if all_nodes[input_a[0]]['op'] not in supported_op_type:
@@ -230,7 +241,7 @@ def convert_symbol2proto(symbol):
                 else:
                     break
             bottom_node_name = all_nodes[input[0]]['name']
-            attr = node['attr']
+            attr = node['attrs']
             inner_product_param = dict()
             inner_product_param['num_output'] = int(attr['num_hidden'])
             fc_top = CL.InnerProduct(top_dict[bottom_node_name][input[1]], ntop=1,
@@ -256,6 +267,52 @@ def convert_symbol2proto(symbol):
                                               top_dict[bottom_node_name_b][input_b[1]], ntop=1)
             top_dict[node['name']] = [softmax_loss]
             setattr(caffe_net, node['name'], softmax_loss)
+        elif node['op'] == 'Concat':
+            if len(node['inputs']) == 2:
+                input_a = node['inputs'][0]
+                while True:
+                    if all_nodes[input_a[0]]['op'] not in supported_op_type:
+                        input_a = all_nodes[input_a[0]]['inputs'][0]
+                    else:
+                        break
+                input_b = node['inputs'][1]
+                while True:
+                    if all_nodes[input_b[0]]['op'] not in supported_op_type:
+                        input_b = all_nodes[input_b[0]]['inputs'][0]
+                    else:
+                        break
+                bottom_node_name_a = all_nodes[input_a[0]]['name']
+                bottom_node_name_b = all_nodes[input_b[0]]['name']
+                concat_top = CL.Concat(top_dict[bottom_node_name_a][input_a[1]], top_dict[bottom_node_name_b][input_b[1]], ntop=1)
+                top_dict[node['name']] = [concat_top]
+                setattr(caffe_net, node['name'], concat_top)
+            elif len(node['inputs']) == 3:
+                input_a = node['inputs'][0]
+                while True:
+                    if all_nodes[input_a[0]]['op'] not in supported_op_type:
+                        input_a = all_nodes[input_a[0]]['inputs'][0]
+                    else:
+                        break
+                input_b = node['inputs'][1]
+                while True:
+                    if all_nodes[input_b[0]]['op'] not in supported_op_type:
+                        input_b = all_nodes[input_b[0]]['inputs'][0]
+                    else:
+                        break
+                input_c = node['inputs'][2]
+                while True:
+                    if all_nodes[input_c[0]]['op'] not in supported_op_type:
+                        input_c = all_nodes[input_c[0]]['inputs'][0]
+                    else:
+                        break
+                bottom_node_name_a = all_nodes[input_a[0]]['name']
+                bottom_node_name_b = all_nodes[input_b[0]]['name']
+                bottom_node_name_c = all_nodes[input_c[0]]['name']
+                concat_top = CL.Concat(top_dict[bottom_node_name_a][input_a[1]],
+                                       top_dict[bottom_node_name_b][input_b[1]],
+                                       top_dict[bottom_node_name_c][input_c[1]], ntop=1)
+                top_dict[node['name']] = [concat_top]
+                setattr(caffe_net, node['name'], concat_top)
         else:
             logging.warn('unknown op type = %s' % node['op'])
 

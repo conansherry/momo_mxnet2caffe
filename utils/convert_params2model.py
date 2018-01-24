@@ -4,6 +4,7 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 
 def convert_params2model(prototxt_file, dst_caffemodel_file, symbol, arg_params, aux_params):
+    caffe.set_mode_cpu()
     attr_dict = symbol.attr_dict()
     caffe_net = caffe.Net(prototxt_file, caffe.TRAIN)
     mxnet_all_keys = arg_params.keys() + aux_params.keys()

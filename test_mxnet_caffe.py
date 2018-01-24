@@ -20,6 +20,8 @@ if __name__ == '__main__':
     caffe_net = caffe.Net(caffe_prototxt, caffe_caffemodel, caffe.TEST)
 
     input_blob = np.ones((1, 3, 160, 160)) * 3
+    input_blob = cv2.cvtColor(input_blob, cv2.COLOR_BGR2RGB)
+    input_blob = input_blob - np.array([123.68, 116.779, 103.939])
 
     # mxnet forward
     symbol = symbol.get_internals()['_maximum0_output']
