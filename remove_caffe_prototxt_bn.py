@@ -5,9 +5,9 @@ import json
 from caffe.proto import caffe_pb2
 from google.protobuf import text_format
 
-prototxt = r'resnet_v4_stage.prototxt'
+prototxt = r'android_upgrade.prototxt'
 
-dst_prototxt = r'resnet_v4_stage_without_bn.prototxt'
+dst_prototxt = r'android_upgrade_without_bn.prototxt'
 
 def readProtoFile(filepath, parser_object):
     file = open(filepath, "r")
@@ -29,19 +29,20 @@ index = 0
 start_remove = False
 for layer in net_params.layer:
     index = index + 1
-    if (layer.type == 'Convolution' or layer.type == 'InnerProduct') and net_params.layer[index].type == 'BatchNorm':
+    if (layer.type == 'Convolution' or layer.type == 'InnerProduct') and index < len(net_params.layer) and net_params.layer[index].type == 'BatchNorm':
         if net_params.layer[index + 2].type == 'ReLU' or net_params.layer[index + 2].type == 'Sigmoid' or net_params.layer[index + 2].type == 'TanH':
             layer.top[0] = net_params.layer[index + 2].top[0]
             start_remove = True
-    elif (layer.type == 'Convolution' or layer.type == 'InnerProduct') and (net_params.layer[index].type == 'ReLU' or net_params.layer[index].type == 'Sigmoid' or net_params.layer[index].type == 'TanH'):
+    elif (layer.type == 'Convolution' or layer.type == 'InnerProduct') and index < len(net_params.layer) and (net_params.layer[index].type == 'ReLU' or net_params.layer[index].type == 'Sigmoid' or net_params.layer[index].type == 'TanH'):
         layer.top[0] = net_params.layer[index].top[0]
     if layer.type == 'BatchNorm' and start_remove:
         continue
     if layer.type == 'Scale' and start_remove:
+        start_remove = False
         continue
-    if layer.type == 'Convolution' and net_params.layer[index].type == 'BatchNorm':
+    if layer.type == 'Convolution' and net_params.layer[index].type == 'BatchNorm' and start_remove:
         layer.convolution_param.bias_term = True
-    if layer.type == 'InnerProduct' and (index < len(net_params.layer) and net_params.layer[index].type == 'BatchNorm'):
+    if layer.type == 'InnerProduct' and (index < len(net_params.layer) and net_params.layer[index].type == 'BatchNorm') and start_remove:
         layer.inner_product_param.bias_term = True
     outfile.write('layer {\n')
     if layer.type == 'ReLU' or layer.type == 'Sigmoid' or layer.type == 'TanH':

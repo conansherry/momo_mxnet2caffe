@@ -2,11 +2,11 @@ import caffe
 import math
 import numpy as np
 
-prototxt = r'resnet_v4_stage.prototxt'
-caffemodel = r'resnet_v4_stage.caffemodel'
+prototxt = r'android_upgrade.prototxt'
+caffemodel = r'android_upgrade.caffemodel'
 
-dst_prototxt = r'resnet_v4_stage_without_bn.prototxt'
-dst_caffemodel = r'resnet_v4_stage_without_bn.caffemodel'
+dst_prototxt = r'android_upgrade_without_bn.prototxt'
+dst_caffemodel = r'android_upgrade_without_bn.caffemodel'
 
 net = caffe.Net(prototxt, caffemodel, caffe.TEST)
 net_dst = caffe.Net(dst_prototxt, caffe.TEST)
