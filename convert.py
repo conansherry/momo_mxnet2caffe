@@ -35,9 +35,9 @@ if __name__ == '__main__':
     # network = get_symbol(1000, 18, "3,224,224")
     # save_symbol_model_for_test('resnet', 0, network, {'data': (1, 3, 128, 128), 'softmax_label': (1,)})
 
-    symbol, arg_params, aux_params = mx.model.load_checkpoint('model/src/android_upgrade', 1)
+    symbol, arg_params, aux_params = mx.model.load_checkpoint('model/src/resnet_v4_stage_seg_fast', 50)
 
     caffe_prototxt = str(convert_symbol2proto(symbol))
-    # with open('model/dst/android_upgrade.prototxt', 'w') as prototxt_file:
+    # with open('model/dst/resnet_v4_stage_seg_fast.prototxt', 'w') as prototxt_file:
     #     prototxt_file.write(caffe_prototxt)
-    convert_params2model('model/dst/android_upgrade.prototxt', 'model/dst/android_upgrade.caffemodel', symbol, arg_params, aux_params)
+    convert_params2model('model/dst/resnet_v4_stage_seg_fast.prototxt', 'model/dst/resnet_v4_stage_seg_fast.caffemodel', symbol, arg_params, aux_params)

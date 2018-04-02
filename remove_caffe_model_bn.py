@@ -2,11 +2,11 @@ import caffe
 import math
 import numpy as np
 
-prototxt = r'android_upgrade.prototxt'
-caffemodel = r'android_upgrade.caffemodel'
+prototxt = r'model/dst/resnet_v4_stage_seg_fast.prototxt'
+caffemodel = r'model/dst/resnet_v4_stage_seg_fast.caffemodel'
 
-dst_prototxt = r'android_upgrade_without_bn.prototxt'
-dst_caffemodel = r'android_upgrade_without_bn.caffemodel'
+dst_prototxt = r'model/dst/resnet_v4_stage_seg_fast_without_bn.prototxt'
+dst_caffemodel = r'model/dst/resnet_v4_stage_seg_fast_without_bn.caffemodel'
 
 net = caffe.Net(prototxt, caffemodel, caffe.TEST)
 net_dst = caffe.Net(dst_prototxt, caffe.TEST)
@@ -14,20 +14,23 @@ net_dst = caffe.Net(dst_prototxt, caffe.TEST)
 for k in net_dst.params:
     if k in net.params:
         for i in range(len(net.params[k])):
-            net_dst.params[k][i].data[...] = net.params[k][i].data
-            print 'copy from', k
-
-
-change_conv_names = ['conv0_conv2d']
+            net_dst.params[k][i].data[...] = net.params[k][i].data[...]
+            print 'copy from', k, net.params[k][i].data.shape
 
 for i in range(len(net.layers)):
     if net.layers[i].type == 'Convolution':
         print net._layer_names[i], net.layers[i].type
         conv_name = net._layer_names[i]
-        # if conv_name not in change_conv_names:
-        #     continue
+
+        # start_remove = False
+        # if 'CPM' not in conv_name or 'relu1_' in conv_name or 'relu2_' in conv_name or 'relu3_' in conv_name or 'relu4_CPM_L1_conv2d_dw' in conv_name or 'relu4_CPM_L1_conv2d_pw' in conv_name:
+        #     start_remove = True
+
+        start_remove = True
+
         j = i + 1
-        if net.layers[j].type == 'BatchNorm':
+        print 'next type', net.layers[j].type
+        if net.layers[j].type == 'BatchNorm' and start_remove:
             print ' ', net._layer_names[j], net.layers[j].type
             print ' ', net._layer_names[j + 1], net.layers[j + 1].type
             bn_name = net._layer_names[j]
@@ -36,24 +39,22 @@ for i in range(len(net.layers)):
             bn_mean = net.params[bn_name][0].data
             bn_variance = net.params[bn_name][1].data
             bn_scale = net.params[bn_name][2].data
-
             scale_weight = net.params[scale_name][0].data
             scale_bias = net.params[scale_name][1].data
 
-            # print bn_name
-            # print bn_mean, bn_variance, bn_scale
-            # print scale_name
-            # print scale_weight, scale_bias
+            # print '  ', bn_name, bn_mean, bn_variance, bn_scale
+            # print '  ', scale_name, scale_weight, scale_bias
 
             dst_conv_weight = net.params[conv_name][0].data
-            if np.count_nonzero(bn_variance) != bn_variance.size:
-                assert False
-
-            alpha = scale_weight / np.sqrt(bn_variance / bn_scale)
             if len(net.params[conv_name]) > 1:
                 dst_conv_bias = net.params[conv_name][1].data
             else:
                 dst_conv_bias = 0
+
+            if np.count_nonzero(bn_variance) != bn_variance.size:
+                assert False
+            alpha = scale_weight / np.sqrt(bn_variance / bn_scale + 0.001) #remember reading eps
+
             print 'len(dst_conv_weight)', len(dst_conv_weight), 'len(alpha)', len(alpha)
             assert len(dst_conv_weight) == len(alpha)
             for k in range(len(alpha)):
@@ -62,9 +63,12 @@ for i in range(len(net.layers)):
             dst_conv_bias = dst_conv_bias * alpha + (scale_bias - (bn_mean / bn_scale) * alpha)
             net_dst.params[conv_name][0].data[...] = dst_conv_weight
 
+            # print '  ', dst_conv_weight
+            # print '  ', dst_conv_bias
+
             if len(net_dst.params[conv_name]) > 1:
                 net_dst.params[conv_name][1].data[...] = dst_conv_bias
-    if net.layers[i].type == 'InnerProduct':
+    if net.layers[i].type == 'InnerProduct' and start_remove:
         print net._layer_names[i], net.layers[i].type
         ip_name = net._layer_names[i]
         j = i + 1

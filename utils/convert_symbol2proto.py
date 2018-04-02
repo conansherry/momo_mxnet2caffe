@@ -43,7 +43,7 @@ def convert_symbol2proto(symbol):
                 next_node[last_node_name] = [node_name]
 
     supported_op_type = ['null', 'BatchNorm', 'Convolution', 'Activation', 'Pooling', 'elemwise_add', 'SliceChannel',
-                         'FullyConnected', 'SoftmaxOutput', '_maximum', 'add_n', 'Concat']
+                         'FullyConnected', 'SoftmaxOutput', '_maximum', 'add_n', 'Concat', '_mul_scalar', 'Deconvolution']
     top_dict = dict()
     caffe_net = caffe.NetSpec()
     for node in no_weight_nodes:
@@ -118,6 +118,40 @@ def convert_symbol2proto(symbol):
                 assert stride_size[0] == stride_size[1]
                 convolution_param['stride'] = stride_size[0]
             conv_top = CL.Convolution(top_dict[bottom_node_name][input[1]], ntop=1, convolution_param=convolution_param)
+            top_dict[node['name']] = [conv_top]
+            setattr(caffe_net, node['name'], conv_top)
+        elif node['op'] == 'Deconvolution':
+            input = node['inputs'][0]
+            while True:
+                if all_nodes[input[0]]['op'] not in supported_op_type:
+                    input = all_nodes[input[0]]['inputs'][0]
+                else:
+                    break
+            bottom_node_name = all_nodes[input[0]]['name']
+            attr = node['attrs']
+            convolution_param = dict()
+            if 'kernel' in attr:
+                kernel_size = eval(attr['kernel'])
+                assert kernel_size[0] == kernel_size[1]
+                convolution_param['kernel_size'] = kernel_size[0]
+            else:
+                convolution_param['kernel_size'] = 1
+            if 'no_bias' in attr:
+                convolution_param['bias_term'] = not eval(attr['no_bias'])
+            else:
+                convolution_param['bias_term'] = False
+            if 'num_group' in attr:
+                convolution_param['group'] = int(attr['num_group'])
+            convolution_param['num_output'] = int(attr['num_filter'])
+            if 'pad' in attr:
+                pad_size = eval(attr['pad'])
+                assert pad_size[0] == pad_size[1]
+                convolution_param['pad'] = pad_size[0]
+            if 'stride' in attr:
+                stride_size = eval(attr['stride'])
+                assert stride_size[0] == stride_size[1]
+                convolution_param['stride'] = stride_size[0]
+            conv_top = CL.Deconvolution(top_dict[bottom_node_name][input[1]], ntop=1, convolution_param=convolution_param)
             top_dict[node['name']] = [conv_top]
             setattr(caffe_net, node['name'], conv_top)
         elif node['op'] == 'Activation':
@@ -218,6 +252,23 @@ def convert_symbol2proto(symbol):
                                      ntop=1, eltwise_param=eltwise_param)
             top_dict[node['name']] = [ele_add_top]
             setattr(caffe_net, node['name'], ele_add_top)
+        elif node['op'] == '_mul_scalar':
+            input = node['inputs'][0]
+            while True:
+                if all_nodes[input[0]]['op'] not in supported_op_type:
+                    input = all_nodes[input[0]]['inputs'][0]
+                else:
+                    break
+            bottom_node_name = all_nodes[input[0]]['name']
+            attr = node['attrs']
+            in_place = False
+            if len(next_node[bottom_node_name]) == 1:
+                in_place = True
+            if NO_INPLACE:
+                in_place = False
+            ac_top = CL.Power(top_dict[bottom_node_name][input[1]], power=1.0, scale=float(attr['scalar']), shift=0, in_place=in_place)
+            top_dict[node['name']] = [ac_top]
+            setattr(caffe_net, node['name'], ac_top)
         elif node['op'] == 'SliceChannel':
             input = node['inputs'][0]
             while True:

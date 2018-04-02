@@ -5,9 +5,9 @@ import json
 from caffe.proto import caffe_pb2
 from google.protobuf import text_format
 
-prototxt = r'android_upgrade.prototxt'
+prototxt = r'model/dst/resnet_v4_stage_seg_fast.prototxt'
 
-dst_prototxt = r'android_upgrade_without_bn.prototxt'
+dst_prototxt = r'model/dst/resnet_v4_stage_seg_fast_without_bn.prototxt'
 
 def readProtoFile(filepath, parser_object):
     file = open(filepath, "r")
@@ -28,13 +28,16 @@ print net_params.name
 index = 0
 start_remove = False
 for layer in net_params.layer:
+    print layer.name
     index = index + 1
     if (layer.type == 'Convolution' or layer.type == 'InnerProduct') and index < len(net_params.layer) and net_params.layer[index].type == 'BatchNorm':
-        if net_params.layer[index + 2].type == 'ReLU' or net_params.layer[index + 2].type == 'Sigmoid' or net_params.layer[index + 2].type == 'TanH':
-            layer.top[0] = net_params.layer[index + 2].top[0]
-            start_remove = True
-    elif (layer.type == 'Convolution' or layer.type == 'InnerProduct') and index < len(net_params.layer) and (net_params.layer[index].type == 'ReLU' or net_params.layer[index].type == 'Sigmoid' or net_params.layer[index].type == 'TanH'):
-        layer.top[0] = net_params.layer[index].top[0]
+        layer.top[0] = net_params.layer[index + 1].top[0]
+
+        # if 'CPM' not in layer.name or 'relu1_' in layer.name or 'relu2_' in layer.name or 'relu3_' in layer.name or 'relu4_CPM_L1_conv2d_dw' in layer.name or 'relu4_CPM_L1_conv2d_pw' in layer.name:
+        #     start_remove = True
+
+        start_remove = True
+
     if layer.type == 'BatchNorm' and start_remove:
         continue
     if layer.type == 'Scale' and start_remove:
@@ -45,7 +48,5 @@ for layer in net_params.layer:
     if layer.type == 'InnerProduct' and (index < len(net_params.layer) and net_params.layer[index].type == 'BatchNorm') and start_remove:
         layer.inner_product_param.bias_term = True
     outfile.write('layer {\n')
-    if layer.type == 'ReLU' or layer.type == 'Sigmoid' or layer.type == 'TanH':
-        layer.bottom[0] = layer.top[0]
     outfile.write('  '.join(('\n' + str(layer)).splitlines(True)))
     outfile.write('\n}\n\n')
