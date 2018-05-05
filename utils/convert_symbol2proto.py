@@ -4,6 +4,7 @@ from caffe import layers as CL
 import json
 import logging
 logging.basicConfig(level=logging.DEBUG)
+import math
 
 NO_INPLACE = False
 
@@ -43,7 +44,7 @@ def convert_symbol2proto(symbol):
                 next_node[last_node_name] = [node_name]
 
     supported_op_type = ['null', 'BatchNorm', 'Convolution', 'Activation', 'Pooling', 'elemwise_add', 'SliceChannel',
-                         'FullyConnected', 'SoftmaxOutput', '_maximum', 'add_n', 'Concat', '_mul_scalar', 'Deconvolution']
+                         'FullyConnected', 'SoftmaxOutput', '_maximum', 'add_n', 'Concat', '_mul_scalar', 'Deconvolution', 'UpSampling']
     top_dict = dict()
     caffe_net = caffe.NetSpec()
     for node in no_weight_nodes:
@@ -152,6 +153,30 @@ def convert_symbol2proto(symbol):
                 assert stride_size[0] == stride_size[1]
                 convolution_param['stride'] = stride_size[0]
             conv_top = CL.Deconvolution(top_dict[bottom_node_name][input[1]], ntop=1, convolution_param=convolution_param)
+            top_dict[node['name']] = [conv_top]
+            setattr(caffe_net, node['name'], conv_top)
+        elif node['op'] == 'UpSampling':
+            input = node['inputs'][0]
+            while True:
+                if all_nodes[input[0]]['op'] not in supported_op_type:
+                    input = all_nodes[input[0]]['inputs'][0]
+                else:
+                    break
+            bottom_node_name = all_nodes[input[0]]['name']
+            attr = node['attrs']
+            convolution_param = dict()
+            if 'scale' in attr:
+                kernel_size = 2 * eval(attr['scale']) - eval(attr['scale']) % 2
+                convolution_param['kernel_size'] = kernel_size
+            else:
+                convolution_param['kernel_size'] = 1
+            convolution_param['bias_term'] = False
+            convolution_param['num_output'] = int(attr['num_filter'])
+            convolution_param['group'] = int(attr['num_filter'])
+            convolution_param['pad'] = int(math.ceil((eval(attr['scale']) - 1) / 2.))
+            convolution_param['stride'] = eval(attr['scale'])
+            conv_top = CL.Deconvolution(top_dict[bottom_node_name][input[1]], ntop=1,
+                                        convolution_param=convolution_param)
             top_dict[node['name']] = [conv_top]
             setattr(caffe_net, node['name'], conv_top)
         elif node['op'] == 'Activation':

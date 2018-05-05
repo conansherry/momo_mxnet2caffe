@@ -5,9 +5,9 @@ import json
 from caffe.proto import caffe_pb2
 from google.protobuf import text_format
 
-prototxt = r'model/dst/resnet_v4_stage_seg_fast.prototxt'
+prototxt = r'model/dst/person_seg_v10_deploy.prototxt'
 
-dst_prototxt = r'model/dst/resnet_v4_stage_seg_fast_without_bn.prototxt'
+dst_prototxt = r'model/dst/person_seg_v10_deploy_without_bn.prototxt'
 
 def readProtoFile(filepath, parser_object):
     file = open(filepath, "r")
