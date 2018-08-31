@@ -33,9 +33,9 @@ if __name__ == '__main__':
     # network = get_symbol(1000, 18, "3,224,224")
     # save_symbol_model_for_test('resnet', 0, network, {'data': (1, 3, 128, 128), 'softmax_label': (1,)})
 
-    symbol, arg_params, aux_params = mx.model.load_checkpoint('model/src/resnet_v5', 8)
+    symbol, arg_params, aux_params = mx.model.load_checkpoint('model/src/get_68pt_symbol', 583)
 
     caffe_prototxt = str(convert_symbol2proto(symbol))
-    # with open('model/dst/resnet_v5.prototxt', 'w') as prototxt_file:
+    # with open('model/dst/hand_net_320x192_stride16.prototxt', 'w') as prototxt_file:
     #     prototxt_file.write(caffe_prototxt)
-    convert_params2model('model/dst/resnet_v5.prototxt', 'model/dst/resnet_v5.caffemodel', symbol, arg_params, aux_params)
+    convert_params2model('model/dst/hand_net_320x192_stride16.prototxt', 'model/dst/hand_net_320x192_stride16.caffemodel', symbol, arg_params, aux_params)

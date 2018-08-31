@@ -2,11 +2,11 @@ import caffe
 import math
 import numpy as np
 
-prototxt = r'model/dst/person_seg_v10_deploy.prototxt'
-caffemodel = r'model/dst/person_seg_v10_finetune_iter_80000.caffemodel'
+prototxt = r'model/dst/hand_net_320x192_stride16.prototxt'
+caffemodel = r'model/dst/hand_net_320x192_stride16.caffemodel'
 
-dst_prototxt = r'model/dst/person_seg_v10_deploy_without_bn.prototxt'
-dst_caffemodel = r'model/dst/person_seg_v10_deploy_without_bn.caffemodel'
+dst_prototxt = r'model/dst/hand_net_320x192_stride16_without_bn.prototxt'
+dst_caffemodel = r'model/dst/hand_net_320x192_stride16_without_bn.caffemodel'
 
 net = caffe.Net(prototxt, caffemodel, caffe.TEST)
 net_dst = caffe.Net(dst_prototxt, caffe.TEST)

@@ -291,9 +291,12 @@ def convert_symbol2proto(symbol):
                 in_place = True
             if NO_INPLACE:
                 in_place = False
-            ac_top = CL.Power(top_dict[bottom_node_name][input[1]], power=1.0, scale=float(attr['scalar']), shift=0, in_place=in_place)
-            top_dict[node['name']] = [ac_top]
-            setattr(caffe_net, node['name'], ac_top)
+
+            scale_top = CL.Scale(top_dict[bottom_node_name][input[1]], ntop=1, scale_param=dict(bias_term=False, filler=dict(value=-1)), in_place=in_place)
+            # scale_top = CL.Power(top_dict[bottom_node_name][input[1]], power=1.0, scale=float(attr['scalar']), shift=0, in_place=in_place)
+
+            top_dict[node['name']] = [scale_top]
+            setattr(caffe_net, node['name'], scale_top)
         elif node['op'] == 'SliceChannel':
             input = node['inputs'][0]
             while True:
