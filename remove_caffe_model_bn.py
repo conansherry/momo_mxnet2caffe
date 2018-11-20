@@ -2,11 +2,11 @@ import caffe
 import math
 import numpy as np
 
-prototxt = r'model/dst/hand_net_320x192_stride16.prototxt'
-caffemodel = r'model/dst/hand_net_320x192_stride16.caffemodel'
+prototxt = r'model/dst/custom_resnet_v2_160x160_stride16_27.prototxt'
+caffemodel = r'model/dst/custom_resnet_v2_160x160_stride16_27.caffemodel'
 
-dst_prototxt = r'model/dst/hand_net_320x192_stride16_without_bn.prototxt'
-dst_caffemodel = r'model/dst/hand_net_320x192_stride16_without_bn.caffemodel'
+dst_prototxt = r'model/dst/custom_resnet_v2_160x160_stride16_27_without_bn.prototxt'
+dst_caffemodel = r'model/dst/custom_resnet_v2_160x160_stride16_27_without_bn.caffemodel'
 
 net = caffe.Net(prototxt, caffemodel, caffe.TEST)
 net_dst = caffe.Net(dst_prototxt, caffe.TEST)
@@ -15,11 +15,11 @@ for k in net_dst.params:
     if k in net.params:
         for i in range(len(net.params[k])):
             net_dst.params[k][i].data[...] = net.params[k][i].data[...]
-            print 'copy from', k, net.params[k][i].data.shape
+            print('copy from', k, net.params[k][i].data.shape)
 
 for i in range(len(net.layers)):
     if net.layers[i].type == 'Convolution':
-        print net._layer_names[i], net.layers[i].type
+        print(net._layer_names[i], net.layers[i].type)
         conv_name = net._layer_names[i]
 
         # start_remove = False
@@ -29,10 +29,12 @@ for i in range(len(net.layers)):
         start_remove = True
 
         j = i + 1
-        print 'next type', net.layers[j].type
+        if j >= len(net.layers) or j + 1 >= len(net.layers):
+            continue
+        print('next type', net.layers[j].type)
         if net.layers[j].type == 'BatchNorm' and start_remove:
-            print ' ', net._layer_names[j], net.layers[j].type
-            print ' ', net._layer_names[j + 1], net.layers[j + 1].type
+            print(' ', net._layer_names[j], net.layers[j].type)
+            print(' ', net._layer_names[j + 1], net.layers[j + 1].type)
             bn_name = net._layer_names[j]
             scale_name = net._layer_names[j + 1]
 
@@ -55,7 +57,7 @@ for i in range(len(net.layers)):
                 assert False
             alpha = scale_weight / np.sqrt(bn_variance / bn_scale + 0.001) #remember reading eps
 
-            print 'len(dst_conv_weight)', len(dst_conv_weight), 'len(alpha)', len(alpha)
+            print('len(dst_conv_weight)', len(dst_conv_weight), 'len(alpha)', len(alpha))
             assert len(dst_conv_weight) == len(alpha)
             for k in range(len(alpha)):
                 dst_conv_weight[k] = dst_conv_weight[k] * alpha[k]
@@ -69,12 +71,14 @@ for i in range(len(net.layers)):
             if len(net_dst.params[conv_name]) > 1:
                 net_dst.params[conv_name][1].data[...] = dst_conv_bias
     if net.layers[i].type == 'InnerProduct' and start_remove:
-        print net._layer_names[i], net.layers[i].type
+        print(net._layer_names[i], net.layers[i].type)
         ip_name = net._layer_names[i]
         j = i + 1
+        if j >= len(net.layers) or j + 1 >= len(net.layers):
+            continue
         if net.layers[j].type == 'BatchNorm':
-            print ' ', net._layer_names[j], net.layers[j].type
-            print ' ', net._layer_names[j + 1], net.layers[j + 1].type
+            print(' ', net._layer_names[j], net.layers[j].type)
+            print(' ', net._layer_names[j + 1], net.layers[j + 1].type)
             bn_name = net._layer_names[j]
             scale_name = net._layer_names[j + 1]
 
@@ -99,7 +103,7 @@ for i in range(len(net.layers)):
                 dst_inner_bias = net.params[ip_name][1].data
             else:
                 dst_inner_bias = 0
-            print 'len(dst_inner_weight)', len(dst_inner_weight), 'len(alpha)', len(alpha)
+            print('len(dst_inner_weight)', len(dst_inner_weight), 'len(alpha)', len(alpha))
             assert len(dst_inner_weight) == len(alpha)
             for k in range(len(alpha)):
                 dst_inner_weight[k] = dst_inner_weight[k] * alpha[k]
@@ -111,6 +115,6 @@ for i in range(len(net.layers)):
                 net_dst.params[ip_name][1].data[...] = dst_inner_bias
 
 net_dst.save(dst_caffemodel)
-print 'FINISH ##############################'
+print('FINISH ##############################')
 
 # net_dst.save(dst_caffemodel)

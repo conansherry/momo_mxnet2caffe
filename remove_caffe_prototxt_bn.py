@@ -5,9 +5,9 @@ import json
 from caffe.proto import caffe_pb2
 from google.protobuf import text_format
 
-prototxt = r'model/dst/hand_net_320x192_stride16.prototxt'
+prototxt = r'model/dst/custom_resnet_v2_160x160_stride16_27.prototxt'
 
-dst_prototxt = r'model/dst/hand_net_320x192_stride16_without_bn.prototxt'
+dst_prototxt = r'model/dst/custom_resnet_v2_160x160_stride16_27_without_bn.prototxt'
 
 def readProtoFile(filepath, parser_object):
     file = open(filepath, "r")
@@ -24,11 +24,11 @@ net_params = readProtoSolverFile(prototxt)
 outfile = open(dst_prototxt, 'w')
 outfile.write('name: \"' + net_params.name + '\"\n')
 outfile.write('\n')
-print net_params.name
+print(net_params.name)
 index = 0
 start_remove = False
 for layer in net_params.layer:
-    print layer.name
+    print(layer.name)
     index = index + 1
     if (layer.type == 'Convolution' or layer.type == 'InnerProduct') and index < len(net_params.layer) and net_params.layer[index].type == 'BatchNorm':
         layer.top[0] = net_params.layer[index + 1].top[0]
@@ -43,7 +43,7 @@ for layer in net_params.layer:
     if layer.type == 'Scale' and start_remove:
         start_remove = False
         continue
-    if layer.type == 'Convolution' and net_params.layer[index].type == 'BatchNorm' and start_remove:
+    if layer.type == 'Convolution' and index < len(net_params.layer) and net_params.layer[index].type == 'BatchNorm' and start_remove:
         layer.convolution_param.bias_term = True
     if layer.type == 'InnerProduct' and (index < len(net_params.layer) and net_params.layer[index].type == 'BatchNorm') and start_remove:
         layer.inner_product_param.bias_term = True
